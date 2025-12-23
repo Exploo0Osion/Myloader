@@ -1,39 +1,32 @@
-﻿# Mirage
+﻿# Mirage 🏜️
 
-一个 Windows x64 Shellcode Loader：融合 **SilentMoonwalk** 的 stack spoofing 与 **SysWhispers3** 的 indirect syscall，并结合 **Module Stomping** 思路（将 `xpsservices.dll` 映射后用 shellcode 覆写其可执行代码段并执行）。
+**Mirage** 是一款集成了多种规避技术的高级 Shellcode 加载框架，旨在绕过现代 EDR 的行为监测、栈回溯分析及内存扫描。
 
-## 特性
+## 🛠️ 核心技术
 
-- Indirect Syscall：基于 SysWhispers3（klezVirus 方案）。
-- Stack Spoofing：基于 SilentMoonwalk（klezVirus 方案）。
-- Module Stomping：加载并映射 `C:\Windows\System32\xpsservices.dll`，定位其可执行 section，写入并执行 payload。
-- `shtools/`：提供 shellcode 模板构建与 `.text` 提取脚本，便于把 C/ASM 形式的 payload 编译为纯字节数组。
+* **间接系统调用 (Indirect Syscalls)** ：基于 **SysWhispers3** 逻辑重构，强制通过 `ntdll` 中的 `syscall; ret` 指令跳转执行，绕过 RIP 完整性校验 。
+* **栈欺骗 (Stack Spoofing)** ：集成 **SilentMoonwalk** 的 Desync 栈伪造技术，通过 `SpoofCall` 构造合法的调用链（如 `BaseThreadInitThunk` -> `RtlUserThreadStart`），规避栈回溯分析。
+* **模块踩踏 (Module Stomping)** ：利用 `NtMapViewOfSection` 映射合法系统 DLL（如 `xpsservices.dll`），并将 Payload 注入其 `.text` 段，使 Shellcode 运行在 Image-Backed 内存中，绕过私有内存扫描 。
+* **RX 内存策略 (RX Strategy)** ：针对只读执行（Read-Execute）内存环境设计。利用 **shtools** 生成不含自解压逻辑、完全基于栈字符串和 API 哈希的纯净 Shellcode，完美兼容无写权限的代码段。
 
-## 构建
+## 📁 项目结构
 
-在 “x64 Native Tools Command Prompt for VS” 中：
+* `src/asm/gate.asm`：核心汇编代码，负责栈伪造与系统调用分发 。
+* `src/loader.c`：实现模块加载、踩踏与权限切换逻辑 。
+* `src/main.c`：动态扫描合适的栈帧（Suitable Frame）并初始化环境 。
+* `shtools/`：用于生成符合 RX 策略的 C 语言 Shellcode 模板及提取工具 。
 
-- `build.bat`
-- 清理：`build.bat clean`
+## 🚀 简易流程
 
-或使用 PowerShell 包装：
+1. **准备 Payload** ：在 `shtools/shellcode.c` 编写代码，运行 `build_shellcode.bat` 提取数组。
+2. **配置 Loader** ：将提取的数组放入 `src/loader.c` 的 `shellcode[]` 变量 ^^。
+3. **编译运行** ：执行 `build.bat` 生成最小化的隐蔽加载器。
 
-- `powershell -ExecutionPolicy Bypass -File build.ps1`
-- 清理：`powershell -ExecutionPolicy Bypass -File build.ps1 -Action clean`
+## ⚠️ 免责声明
 
-产物：`bin\MyLoader.exe`
+本项目仅供网络安全研究与红队测试（Red Teaming）使用。请勿用于任何非法用途。开发者对使用本项目造成的任何后果不承担责任。
 
-## Shellcode 工作流（shtools）
+## 🙏 致谢
 
-`xpsservices.dll` 的 `.text` 默认是 RX，项目通过 `NtProtectVirtualMemory` 临时改成 RW 写入；为了更方便生成“能直接落到代码段执行”的 payload，使用 `shtools/` 以模板方式构建并提取字节数组：
-
-- `cd shtools`
-- `build_shellcode.bat`（生成 `shellcode.exe`）
-- `python extract.py`（打印 `unsigned char shellcode[] = { ... };`）
-- 将输出替换到 `src/loader.c` 内的 `shellcode[]` 数组即可
-
-依赖：Python + `pefile`（例如：`pip install pefile`）。
-
-## 免责声明
-
-仅用于学习与研究，请勿用于未授权的测试或非法用途。
+- **SilentMoonwalk** by [klezVirus](https://github.com/klezVirus) - Stack Spoofing
+- **SysWhispers3** by [klezVirus](https://github.com/klezVirus) - Syscall
