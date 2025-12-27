@@ -5,7 +5,8 @@
 ## 🛠️ 核心技术
 
 * **间接系统调用 (Indirect Syscalls)** ：基于 **SysWhispers3** 逻辑重构，强制通过 `ntdll` 中的 `syscall; ret` 指令跳转执行，绕过 RIP 完整性校验 。
-* **栈欺骗 (Stack Spoofing)** ：集成 **SilentMoonwalk** 的 Desync 栈伪造技术，通过 `SpoofCall` 构造合法的调用链（如 `BaseThreadInitThunk` -> `RtlUserThreadStart`），规避栈回溯分析。
+* **栈欺骗 (Stack Spoofing)** ：基于 **SilentMoonwalk** 的栈伪造技术，通过 `SpoofCall` 构造合法的调用链（如 `BaseThreadInitThunk` -> `RtlUserThreadStart`），规避栈回溯分析。
+* ![1766841865387](image/README/1766841865387.png)
 * **模块踩踏 (Module Stomping)** ：利用 `NtMapViewOfSection` 映射合法系统 DLL（如 `xpsservices.dll`），并将 Payload 注入其 `.text` 段，使 Shellcode 运行在 Image-Backed 内存中，绕过私有内存扫描 。
 * **RX 内存策略 (RX Strategy)** ：针对只读执行（Read-Execute）内存环境设计。利用 **shtools** 生成不含自解压逻辑、完全基于栈字符串和 API 哈希的纯净 Shellcode，完美兼容无写权限的代码段。
 

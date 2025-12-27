@@ -38,23 +38,6 @@ VOID VxInitUnicodeString(PUNICODE_STRING DestinationString, PCWSTR SourceString)
     }
 }
 
-// 获取函数地址的辅助函数 (GetProcAddress 的简单实现)
-PVOID VxGetProcAddress(PVOID hModule, DWORD dwHash) {
-    PIMAGE_EXPORT_DIRECTORY pExportDir = NULL;
-    if (!GetImageExportDirectory(hModule, &pExportDir)) return NULL;
-    
-    PDWORD names = (PDWORD)((PBYTE)hModule + pExportDir->AddressOfNames);
-    PWORD ordinals = (PWORD)((PBYTE)hModule + pExportDir->AddressOfNameOrdinals);
-    PDWORD functions = (PDWORD)((PBYTE)hModule + pExportDir->AddressOfFunctions);
-
-    for (DWORD i = 0; i < pExportDir->NumberOfNames; i++) {
-        PCHAR name = (PCHAR)((PBYTE)hModule + names[i]);
-        if (djb2((PBYTE)name) == dwHash) {
-            return (PBYTE)hModule + functions[ordinals[i]];
-        }
-    }
-    return NULL;
-}
 
 PVOID VxMoveMemory(PVOID dest, const PVOID src, SIZE_T len) {
 	char* d = (char*)dest;
@@ -67,7 +50,22 @@ PVOID VxMoveMemory(PVOID dest, const PVOID src, SIZE_T len) {
 	}
 	return dest;
 }
+PVOID GetProcAddressByName(PVOID pModuleBase, DWORD64 dwHash) {
+    PIMAGE_EXPORT_DIRECTORY pImageExportDirectory = NULL;
+    if (!GetImageExportDirectory(pModuleBase, &pImageExportDirectory)) return NULL;
 
+    PDWORD pdwAddressOfFunctions = (PDWORD)((PBYTE)pModuleBase + pImageExportDirectory->AddressOfFunctions);
+    PDWORD pdwAddressOfNames = (PDWORD)((PBYTE)pModuleBase + pImageExportDirectory->AddressOfNames);
+    PWORD pwAddressOfNameOrdinales = (PWORD)((PBYTE)pModuleBase + pImageExportDirectory->AddressOfNameOrdinals);
+
+    for (DWORD i = 0; i < pImageExportDirectory->NumberOfNames; i++) {
+        PCHAR pczFunctionName = (PCHAR)((PBYTE)pModuleBase + pdwAddressOfNames[i]);
+        if (djb2((PBYTE)pczFunctionName)==dwHash) {
+            return (PBYTE)pModuleBase + pdwAddressOfFunctions[pwAddressOfNameOrdinales[i]];
+        }
+    }
+    return NULL;
+}
 
 BOOL GetImageExportDirectory(PVOID pModuleBase, PIMAGE_EXPORT_DIRECTORY* ppImageExportDirectory) {
 	PIMAGE_DOS_HEADER pImageDosHeader = (PIMAGE_DOS_HEADER)pModuleBase;

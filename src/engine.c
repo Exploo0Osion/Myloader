@@ -74,23 +74,19 @@ NTSTATUS InvokeSpoofedSyscall(PVX_TABLE_ENTRY pEntry, UINT64 argCount, ...) {
     spoof.SecondFrameFunctionPointer = g_pBaseThreadInitThunk;
     spoof.FirstFrameSize = g_RtlFrameSize;
     spoof.SecondFrameSize = g_BaseFrameSize;
-    spoof.FirstFrameRandomOffset = rand();
-    spoof.SecondFrameRandomOffset = rand();
+    spoof.FirstFrameRandomOffset =(DWORD64)g_FirstFrameOffset;
+    spoof.SecondFrameRandomOffset =(DWORD64)g_SecondFrameOffset;
 
     spoof.JmpRbxGadget = g_pThunkGadget ? g_pThunkGadget : g_pRandomSyscallGadget;
     spoof.AddRspXGadget = g_pStackGadget ? g_pStackGadget : g_pRandomSyscallGadget;
-    
     // JmpRbxGadget 通常是 jmp [rbx] 或 call [rbx]，本身不涉及栈调整
-    spoof.JmpRbxGadgetFrameSize = 0; 
+    spoof.JmpRbxGadgetFrameSize = g_JmpRbxGadgetFrameSize; 
     
     if (spoof.AddRspXGadget == g_pStackGadget) {
-        spoof.AddRspXGadgetFrameSize = g_StackGadgetSize;
+        spoof.AddRspXGadgetFrameSize = g_StackGadgetSize+0x8;
     } else {
         spoof.AddRspXGadgetFrameSize = 0; // Fallback 情况
     };
-
-    spoof.StackOffsetWhereRbpIsPushed = g_RbpPushOffset;
-    spoof.RbpFrameOffset = g_RbpFrameOffset; // 传递动态扫描到的 RBP Offset
 
     va_list args;
     va_start(args, argCount);

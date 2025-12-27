@@ -17,9 +17,12 @@ PVOID kernelFrameModuleBase = NULL;
 
 PVOID g_pRtlUserThreadStart = NULL;
 PVOID g_pBaseThreadInitThunk = NULL;
+DWORD g_FirstFrameOffset = 0;
+DWORD g_SecondFrameOffset = 0;
 DWORD g_RtlFrameSize = 0;
 DWORD g_BaseFrameSize = 0;
 DWORD g_RbpPushOffset = 0;
 DWORD g_RbpFrameOffset = 0;
 DWORD g_StackGadgetSize = 0;
+DWORD g_JmpRbxGadgetFrameSize = 0;
 

@@ -89,91 +89,77 @@ get_current_rsp endp
 SpoofCall proc
     ; 1. 备份原始 RSP 到 R11
     mov     r11, rsp
-
-    ; 2. 保存 Callee-Saved 寄存器到 Shadow Space (调用者分配给我们的空间)
     mov     [r11+08h], rbp
     mov     [r11+10h], rbx
-    
-    ; 使用 R12 保存原始 RSP
     mov     [r11+18h], r12
-    mov     r12, r11  
+    mov     [r11+20h], rdi ; 新增
+    mov     [r11+28h], rsi ; 新增
+    mov     [r11+30h], r13 ; 新增
+    mov     [r11+38h], r14 ; 新增
+    mov     [r11+40h], r15 ; 新增，特别重要，因为下面用到了 R15
 
-    ; 3. 应用动态 RBP 偏移 
-    mov     rbp, r11
-    add     rbp, [rcx].SPOOFER.RbpFrameOffset
+    mov     r12, r11  
     
-    ; 4. 准备 JMP [RBX] 
+    ; 3. 准备 JMP [RBX] 跳转回来的目标
     lea     rax, restore
     push    rax             ; [栈底] restore 地址
-    lea     rbx, [rsp] 
+    lea     rbx, [rsp]      ; RBX 指向 restore
 
-    ; ----------------------------------------------------------
-    ; 构建伪造帧 (Fake Frames)
-    ; ----------------------------------------------------------
-    push    [rcx].SPOOFER.FirstFrameFunctionPointer
+    ; ==========================================================
+    ; RSP-Based 栈伪造构建
+    ; ==========================================================
+
+    ; 1. 压入 0 (作为 RtlUserThreadStart 的返回地址，终止栈回溯)
+    push    0
+
+    ; 2. 构建 FirstFrame (RtlUserThreadStart)
+    sub     rsp, [rcx].SPOOFER.FirstFrameSize       ; 分配栈空间
+    push    [rcx].SPOOFER.FirstFrameFunctionPointer ; 压入函数地址 (作为 BaseThreadInitThunk 的返回地址)
     mov     rax, [rcx].SPOOFER.FirstFrameRandomOffset
-    add     qword ptr [rsp], rax
+    add     qword ptr [rsp], rax                    ; 加上偏移，指向函数体内
 
-    mov     rax, [rcx].SPOOFER.ReturnAddress
-    sub     rax, [rcx].SPOOFER.FirstFrameSize
-
-    sub     rsp, [rcx].SPOOFER.SecondFrameSize
-    mov     r10, [rcx].SPOOFER.StackOffsetWhereRbpIsPushed
-    mov     [rsp+r10], rax
-
-    push    [rcx].SPOOFER.SecondFrameFunctionPointer
+    ; 3. 构建 SecondFrame (BaseThreadInitThunk)
+    sub     rsp, [rcx].SPOOFER.SecondFrameSize      ; 分配栈空间
+    push    [rcx].SPOOFER.SecondFrameFunctionPointer; 压入函数地址 (作为 JmpRbxGadget 的返回地址)
     mov     rax, [rcx].SPOOFER.SecondFrameRandomOffset
-    add     qword ptr [rsp], rax
+    add     qword ptr [rsp], rax                    ; 加上偏移
 
-    ; ----------------------------------------------------------
-    ; 构造执行流 (Execution Flow) - 保持之前的修复
-    ; ----------------------------------------------------------
-    
-    ; 1) Thunk 帧 (JmpRbx)
+    ; 4. 构建 JmpRbxFrame (如果有)
     sub     rsp, [rcx].SPOOFER.JmpRbxGadgetFrameSize
-    push    [rcx].SPOOFER.JmpRbxGadgetRef 
 
-    ; 2) Stack Pivot 帧 (AddRsp)
+    ; 5. 为 JmpRbxGadget 预留返回地址位置
+    sub     rsp, 8
+    mov     rax, [rcx].SPOOFER.JmpRbxGadget
+    mov     [rsp], rax
+
+    ; 6. 构建 AddRspFrame (Syscall 的 Shadow Space)
     mov     rax, [rcx].SPOOFER.AddRspXGadgetFrameSize
     sub     rsp, rax
 
-    ; 8 字节对齐
-    sub     rsp, 8
-
-    ; 填入 Syscall 的返回地址 (AddRspXGadget)
+    ; 7. 填入 Syscall 的返回地址 (指向 AddRspGadget)
     mov     r10, [rcx].SPOOFER.AddRspXGadget
     mov     [rsp], r10
-
-    ; 填入 AddRsp 的返回地址 (JmpRbxGadget)
-    mov     r10, rsp
-    add     r10, 8
-    add     r10, rax    ; rax = AddRspXGadgetFrameSize
-    
-    mov     rax, [rcx].SPOOFER.JmpRbxGadget
-    mov     [r10], rax
-
-    ; 3. 准备调用 SyscallWrapper
     mov     rax, [rcx].SPOOFER.SpoofFunctionPointer
     jmp     parameter_handler
-    jmp     execute
+    jmp execute
 SpoofCall endp
 
 restore proc
     ; 使用 R12 恢复堆栈,R12 始终保存着最开始的 RSP。
     mov     rsp, r12
-    ; 恢复寄存器
-    mov     r12, [rsp+18h] 
+    mov     r15, [rsp+40h]
+    mov     r14, [rsp+38h]
+    mov     r13, [rsp+30h]
+    mov     rsi, [rsp+28h]
+    mov     rdi, [rsp+20h]
+    mov     r12, [rsp+18h]
     mov     rbx, [rsp+10h]
     mov     rbp, [rsp+08h]
+
     ret
 restore endp
 
 parameter_handler proc
-    mov     r9, rax
-    mov     rax, 8
-    mov     r8, [rcx].SPOOFER.Nargs
-    mul     r8
-    xchg    r9, rax
     cmp     [rcx].SPOOFER.Nargs, 8
     je      handle_eight
     cmp     [rcx].SPOOFER.Nargs, 9
@@ -203,59 +189,43 @@ parameter_handler proc
 parameter_handler endp
 
 handle_eight proc
-    push    r15
     mov     r15, [rcx].SPOOFER.Arg08
-    mov     [rsp+48h], r15
-    pop     r15
+    mov     [rsp+40h], r15
     jmp     handle_seven
 handle_eight endp
 handle_nine proc
-    push    r15
     mov     r15, [rcx].SPOOFER.Arg09
-    mov     [rsp+50h], r15
-    pop     r15
+    mov     [rsp+48h], r15
     jmp     handle_eight
 handle_nine endp
 handle_ten proc
-    push    r15
     mov     r15, [rcx].SPOOFER.Arg10
-    mov     [rsp+58h], r15
-    pop     r15
+    mov     [rsp+50h], r15
     jmp     handle_nine
 handle_ten endp
 handle_eleven proc
-    push    r15
     mov     r15, [rcx].SPOOFER.Arg11
-    mov     [rsp+60h], r15
-    pop     r15
+    mov     [rsp+58h], r15
     jmp     handle_ten
 handle_eleven endp
 handle_twelve proc
-    push    r15
     mov     r15, [rcx].SPOOFER.Arg12
-    mov     [rsp+68h], r15
-    pop     r15
+    mov     [rsp+60h], r15
     jmp     handle_eleven
 handle_twelve endp
 handle_seven proc
-    push    r15
     mov     r15, [rcx].SPOOFER.Arg07
-    mov     [rsp+40h], r15
-    pop     r15
+    mov     [rsp+38h], r15
     jmp     handle_six
 handle_seven endp
 handle_six proc
-    push    r15
     mov     r15, [rcx].SPOOFER.Arg06
-    mov     [rsp+38h], r15
-    pop     r15
+    mov     [rsp+30h], r15
     jmp     handle_five
 handle_six endp
 handle_five proc
-    push    r15
     mov     r15, [rcx].SPOOFER.Arg05
-    mov     [rsp+30h], r15
-    pop     r15
+    mov     [rsp+28h], r15
     jmp     handle_four
 handle_five endp
 handle_four proc

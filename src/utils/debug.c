@@ -93,3 +93,25 @@ BOOL Debug_ValidateGadgets() {
 
     return TRUE;
 }
+
+void Test_StackSpoofing(PIMAGE_EXPORT_DIRECTORY pImageExportDirectory) {
+
+    DWORD64 dwHash = djb2((PBYTE)"NtDelayExecution");
+    VX_TABLE_ENTRY entry = { 0 };
+    entry.dwHash = dwHash;
+    if (!GetVxTableEntry(g_ntdllBase, pImageExportDirectory, &entry)) {
+        printf("something wrong");
+        return;
+    }
+
+    printf("[+] NtDelayExecution (SSN: 0x%X)\n", entry.wSystemCall);
+
+    LARGE_INTEGER Timeout;
+    Timeout.QuadPart = -200000000LL; 
+    NTSTATUS status = InvokeSpoofedSyscall(&entry, 2, FALSE, &Timeout);
+    if (NT_SUCCESS(status)) {
+        printf("[+] success。\n");
+    } else {
+        printf("[-] NtDelayExecution wrong: 0x%08X\n", status);
+    }
+}

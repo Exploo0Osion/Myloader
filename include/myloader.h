@@ -49,7 +49,9 @@ extern DWORD g_BaseFrameSize;
 extern DWORD g_RbpPushOffset;
 extern DWORD g_RbpFrameOffset;
 extern DWORD g_StackGadgetSize;
-
+extern DWORD g_FirstFrameOffset;
+extern DWORD g_SecondFrameOffset;
+extern DWORD g_JmpRbxGadgetFrameSize;
 /*--------------------------------------------------------------------
   Debug helpers
 --------------------------------------------------------------------*/
@@ -57,7 +59,7 @@ void Debug_PrintStatus(const char* apiName, NTSTATUS status);
 BOOL Debug_SelfCheck();
 void Debug_CheckStructOffsets();
 BOOL Debug_ValidateGadgets();
-
+void Test_StackSpoofing(PIMAGE_EXPORT_DIRECTORY pImageExportDirectory);
 /*--------------------------------------------------------------------
   SysWhispers3 / hashing
 --------------------------------------------------------------------*/
@@ -76,24 +78,19 @@ PTEB RtlGetThreadEnvironmentBlock();
 BOOL GetImageExportDirectory(PVOID pModuleBase, PIMAGE_EXPORT_DIRECTORY* ppImageExportDirectory);
 BOOL GetVxTableEntry(PVOID pModuleBase, PIMAGE_EXPORT_DIRECTORY pImageExportDirectory, PVX_TABLE_ENTRY pVxTableEntry);
 VOID VxInitUnicodeString(PUNICODE_STRING DestinationString, PCWSTR SourceString);
-PVOID VxGetProcAddress(PVOID hModule, DWORD dwHash);
+PVOID GetProcAddressByName(PVOID pModuleBase, DWORD64 dwHash);
 PVOID VxMoveMemory(PVOID dest, const PVOID src, SIZE_T len);
 void MySrand(unsigned long seed);
 int MyRand();
 /*--------------------------------------------------------------------
   Gadgets / unwind / stack spoofing
 --------------------------------------------------------------------*/
-PVOID GetSyscallGadget(PVOID pModuleBase);
-PVOID GetStackGadget(PVOID pModuleBase, PDWORD outSize);
-PVOID GetThunkGadget(PVOID pModuleBase);
 PRUNTIME_FUNCTION VxLookupFunctionEntry(DWORD64 ControlPc, PVOID ImageBase);
-DWORD CalculateStackFrameSize(PVOID moduleBase, PVOID functionAddress);
-DWORD GetFrameSizeForAddress(PVOID address,PVOID moduleBase);
-DWORD FindRbpPushOffset(PVOID functionAddress, PVOID moduleBase);
-PVOID FindSuitableFrame(PVOID moduleBase);
-BOOL IsForwarder(PVOID pModuleBase, PVOID pFuncAddress);
-NTSTATUS InvokeSpoofedSyscall(PVX_TABLE_ENTRY pEntry, UINT64 argCount, ...);
-
+DWORD CalculateFunctionStackSize(PVOID funcAddr, PVOID moduleBase);
+PVOID FindAddRspGadget(PVOID pModuleBase, DWORD* outSize);
+PVOID FindJmpRbxGadget(PVOID moduleBase,DWORD *size);
+PVOID GetSyscallGadget(PVOID pModuleBase);
+DWORD FindCallSiteOffset(PVOID funcAddr, PVOID moduleBase);
 /*--------------------------------------------------------------------
   Payloads
 --------------------------------------------------------------------*/
